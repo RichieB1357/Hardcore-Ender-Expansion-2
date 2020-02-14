@@ -1,0 +1,101 @@
+Index: src/main/java/chylex/hee/game/world/territory/TerritoryTicker.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/chylex/hee/game/world/territory/TerritoryTicker.kt	(date 1581019939709)
++++ src/main/java/chylex/hee/game/world/territory/TerritoryTicker.kt	(date 1581019939709)
+@@ -0,0 +1,54 @@
++package chylex.hee.game.world.territory
++import chylex.hee.HEE
++import chylex.hee.system.migration.forge.SubscribeAllEvents
++import chylex.hee.system.migration.forge.SubscribeEvent
++import chylex.hee.system.util.totalTime
++import net.minecraft.world.World
++import net.minecraftforge.event.world.WorldEvent
++
++@SubscribeAllEvents(modid = HEE.ID)
++object TerritoryTicker{
++	private val active = mutableMapOf<TerritoryInstance, Entry>()
++	
++	private class Entry{
++		var lastTickTime = -1L
++	}
++	
++	fun onWorldTick(world: World){
++		val currentTime = world.totalTime
++		
++		if (currentTime % 600L == 0L){
++			active.values.removeAll { currentTime - it.lastTickTime > 1L }
++		}
++		
++		for(player in world.players){
++			val instance = TerritoryInstance.fromPos(player)
++			
++			if (instance == null){
++				continue
++			}
++			
++			val entry = active.getOrPut(instance){ Entry() }
++			
++			if (entry.lastTickTime == currentTime){
++				continue
++			}
++			
++			entry.lastTickTime = currentTime
++			// TODO update
++		}
++	}
++	
++	@SubscribeEvent
++	fun onWorldUnload(e: WorldEvent.Save){
++		if (e.world.dimension.type !== HEE.dim){
++			return
++		}
++		
++		for((instance, entry) in active){
++			// TODO save
++		}
++		
++		active.clear()
++	}
++}
+Index: src/main/java/chylex/hee/game/world/WorldProviderEndCustom.kt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>package chylex.hee.game.world\r\nimport chylex.hee.HEE\r\nimport chylex.hee.client.render.territory.EmptyRenderer\r\nimport chylex.hee.client.render.territory.EnvironmentRenderer\r\nimport chylex.hee.client.render.util.GL\r\nimport chylex.hee.client.render.util.GL.FOG_EXP2\r\nimport chylex.hee.game.mechanics.portal.SpawnInfo\r\nimport chylex.hee.game.world.provider.DragonFightManagerNull\r\nimport chylex.hee.game.world.provider.WorldBorderNull\r\nimport chylex.hee.game.world.territory.TerritoryInstance\r\nimport chylex.hee.game.world.territory.TerritoryInstance.Companion.THE_HUB_INSTANCE\r\nimport chylex.hee.game.world.territory.TerritoryVoid\r\nimport chylex.hee.proxy.ModCommonProxy\r\nimport chylex.hee.system.migration.forge.Side\r\nimport chylex.hee.system.migration.forge.Sided\r\nimport chylex.hee.system.util.Pos\r\nimport chylex.hee.system.util.xz\r\nimport net.minecraft.block.Blocks\r\nimport net.minecraft.util.math.BlockPos\r\nimport net.minecraft.util.math.Vec3d\r\nimport net.minecraft.world.World\r\nimport net.minecraft.world.biome.Biomes\r\nimport net.minecraft.world.biome.provider.SingleBiomeProvider\r\nimport net.minecraft.world.biome.provider.SingleBiomeProviderSettings\r\nimport net.minecraft.world.dimension.DimensionType\r\nimport net.minecraft.world.dimension.EndDimension\r\nimport net.minecraft.world.gen.ChunkGenerator\r\nimport net.minecraft.world.gen.EndGenerationSettings\r\nimport net.minecraft.world.server.ServerWorld\r\nimport net.minecraftforge.client.IRenderHandler\r\nimport java.util.function.BiFunction\r\n\r\nclass WorldProviderEndCustom(world: World, type: DimensionType) : EndDimension(world, type){\r\n\tcompanion object{\r\n\t\tconst val DEFAULT_CELESTIAL_ANGLE = 0.5F\r\n\t\tconst val DEFAULT_SUN_BRIGHTNESS = 1F\r\n\t\tconst val DEFAULT_SKY_LIGHT = 0\r\n\t\t\r\n\t\tconst val SAVE_FOLDER = \"DIM-HEE\"\r\n\t\tval CONSTRUCTOR = BiFunction(::WorldProviderEndCustom)\r\n\t\t\r\n\t\tfun register(){\r\n\t\t\twith(HEE.dim){\r\n\t\t\t\tdirectory = SAVE_FOLDER\r\n\t\t\t\tfactory = CONSTRUCTOR\r\n\t\t\t\thasSkyLight = true\r\n\t\t\t}\r\n\t\t}\r\n\t\t\r\n\t\tvar debugMode = false\r\n\t\t\r\n\t\tprivate val CLIENT_SIDE_SPAWN_POINT = Pos(THE_HUB_INSTANCE.centerPoint).xz.withY(255)\r\n\t}\r\n\t\r\n\tprivate var clientProxy: ModCommonProxy? = null\r\n\t\r\n\tprivate val clientEnvironment\r\n\t\tget() = clientProxy?.getClientSidePlayer()?.let(TerritoryInstance.Companion::fromPos)?.territory?.desc?.environment\r\n\t\r\n\tinit{\r\n\t\twhen(val w = this.world){\r\n\t\t\tis ServerWorld -> {\r\n\t\t\t\tdragonFightManager = DragonFightManagerNull(w, this)\r\n\t\t\t}\r\n\t\t\t\r\n\t\t\telse -> {\r\n\t\t\t\tclientProxy = HEE.proxy\r\n\t\t\t}\r\n\t\t}\r\n\t}\r\n\t\r\n\toverride fun createChunkGenerator(): ChunkGenerator<EndGenerationSettings>{\r\n\t\tval settings = EndGenerationSettings().apply {\r\n\t\t\tdefaultBlock = Blocks.END_STONE.defaultState\r\n\t\t\tdefaultFluid = Blocks.AIR.defaultState\r\n\t\t\tspawnPos = CLIENT_SIDE_SPAWN_POINT\r\n\t\t}\r\n\t\t\r\n\t\treturn ChunkGeneratorEndCustom(world, SingleBiomeProvider(SingleBiomeProviderSettings().setBiome(Biomes.THE_END)), settings)\r\n\t}\r\n\t\r\n\t// Spawn point\r\n\t\r\n\tfun getSpawnInfo(): SpawnInfo{\r\n\t\treturn THE_HUB_INSTANCE.prepareSpawnPoint(null, clearanceRadius = 1)\r\n\t}\r\n\t\r\n\toverride fun getSpawnPoint(): BlockPos{\r\n\t\treturn if (world.isRemote)\r\n\t\t\tCLIENT_SIDE_SPAWN_POINT\r\n\t\telse\r\n\t\t\tTHE_HUB_INSTANCE.getSpawnPoint()\r\n\t}\r\n\t\r\n\toverride fun getSpawnCoordinate(): BlockPos?{\r\n\t\treturn null\r\n\t}\r\n\t\r\n\t// Behavior properties\r\n\t\r\n\toverride fun tick(){ // stops triggering a few seconds after all players leave the dimension (if still loaded)\r\n\t\tif (!debugMode){\r\n\t\t\tTerritoryVoid.onWorldTick(world as ServerWorld)\r\n\t\t}\r\n\t}\r\n\t\r\n\toverride fun createWorldBorder() = WorldBorderNull()\r\n\t\r\n\t// TODO shitton of things to play around with, also test if default values work on server\r\n\t\r\n\t// Visual properties (Light)\r\n\t\r\n\toverride fun getLightmapColors(partialTicks: Float, sunBrightness: Float, skyLight: Float, blockLight: Float, colors: FloatArray){\r\n\t\tclientEnvironment?.lightmap?.update(colors, sunBrightness, skyLight, blockLight, partialTicks)\r\n\t}\r\n\t\r\n\toverride fun getLightBrightnessTable(): FloatArray{\r\n\t\treturn clientEnvironment?.lightBrightnessTable ?: super.getLightBrightnessTable()\r\n\t}\r\n\t\r\n\toverride fun calculateCelestialAngle(worldTime: Long, partialTicks: Float): Float{\r\n\t\treturn clientEnvironment?.celestialAngle ?: DEFAULT_CELESTIAL_ANGLE\r\n\t}\r\n\t\r\n\t@Sided(Side.CLIENT)\r\n\toverride fun getSunBrightness(partialTicks: Float): Float{\r\n\t\treturn clientEnvironment?.sunBrightness ?: DEFAULT_SUN_BRIGHTNESS\r\n\t}\r\n\t\r\n\t// Visual Properties (Sky)\r\n\t\r\n\t@Sided(Side.CLIENT)\r\n\toverride fun isSkyColored(): Boolean{\r\n\t\treturn true\r\n\t}\r\n\t\r\n\t@Sided(Side.CLIENT)\r\n\toverride fun getSkyRenderer(): IRenderHandler?{\r\n\t\treturn clientEnvironment?.renderer ?: EmptyRenderer\r\n\t}\r\n\t\r\n\t@Sided(Side.CLIENT)\r\n\toverride fun getSkyColor(pos: BlockPos, partialTicks: Float): Vec3d{\r\n\t\treturn clientEnvironment?.fogColor ?: Vec3d.ZERO // return fog color because vanilla blends fog into sky color based on chunk render distance\r\n\t}\r\n\t\r\n\t// Visual properties (Fog)\r\n\t\r\n\t@Sided(Side.CLIENT)\r\n\toverride fun getFogColor(celestialAngle: Float, partialTicks: Float): Vec3d{\r\n\t\treturn clientEnvironment?.fogColor ?: Vec3d.ZERO\r\n\t}\r\n\t\r\n\t@Sided(Side.CLIENT)\r\n\toverride fun doesXZShowFog(x: Int, z: Int): Boolean{\r\n\t\tif (debugMode){\r\n\t\t\treturn false\r\n\t\t}\r\n\t\t\r\n\t\tGL.setFogMode(FOG_EXP2)\r\n\t\tGL.setFogDensity(clientEnvironment?.fogDensity?.times(EnvironmentRenderer.currentFogDensityMp) ?: 0F) // TODO adjust fog density by render distance\r\n\t\treturn true\r\n\t}\r\n\t\r\n\t@Sided(Side.CLIENT)\r\n\toverride fun getVoidFogYFactor(): Double{\r\n\t\treturn 1.0\r\n\t}\r\n\t\r\n\t// Neutralization\r\n\t\r\n\toverride fun setSpawnPoint(pos: BlockPos){}\r\n\t\r\n\t@Sided(Side.CLIENT)\r\n\toverride fun setSkyRenderer(renderer: IRenderHandler){}\r\n\t\r\n\t@Sided(Side.CLIENT)\r\n\toverride fun setCloudRenderer(renderer: IRenderHandler){}\r\n\t\r\n\t@Sided(Side.CLIENT)\r\n\toverride fun setWeatherRenderer(renderer: IRenderHandler){}\r\n}\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- src/main/java/chylex/hee/game/world/WorldProviderEndCustom.kt	(revision 12f63e69e7cf514a5fbb3c60d3bf901456ec246c)
++++ src/main/java/chylex/hee/game/world/WorldProviderEndCustom.kt	(date 1581686374502)
+@@ -9,6 +9,7 @@
+ import chylex.hee.game.world.provider.WorldBorderNull
+ import chylex.hee.game.world.territory.TerritoryInstance
+ import chylex.hee.game.world.territory.TerritoryInstance.Companion.THE_HUB_INSTANCE
++import chylex.hee.game.world.territory.TerritoryTicker
+ import chylex.hee.game.world.territory.TerritoryVoid
+ import chylex.hee.proxy.ModCommonProxy
+ import chylex.hee.system.migration.forge.Side
+@@ -57,6 +58,9 @@
+ 	private val clientEnvironment
+ 		get() = clientProxy?.getClientSidePlayer()?.let(TerritoryInstance.Companion::fromPos)?.territory?.desc?.environment
+ 	
++	private val serverWorld
++		get() = world as ServerWorld
++	
+ 	init{
+ 		when(val w = this.world){
+ 			is ServerWorld -> {
+@@ -99,8 +103,10 @@
+ 	// Behavior properties
+ 	
+ 	override fun tick(){ // stops triggering a few seconds after all players leave the dimension (if still loaded)
++		TerritoryTicker.onWorldTick(serverWorld)
++		
+ 		if (!debugMode){
+-			TerritoryVoid.onWorldTick(world as ServerWorld)
++			TerritoryVoid.onWorldTick(serverWorld)
+ 		}
+ 	}
+ 	
